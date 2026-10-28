@@ -101,6 +101,23 @@ h1, h2, h3 { font-family: 'Manrope', sans-serif; }
 .attachment-item small { margin-top: 2px; color: #707d73; font-size: 9px; }
 .remove-file { display: grid; width: 27px; height: 27px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 3px; background: transparent; color: #647168; cursor: pointer; }
 .remove-file:hover { background: #f8e9e3; color: #a24f39; }
+.recorder-panel { display: grid; gap: 12px; margin-top: 12px; padding: 14px; border: 1px solid #dfe6dc; border-radius: 5px; background: #f9fbf6; }
+.recorder-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.recorder-heading h3 { margin: 0 0 3px; color: #40564a; font-size: 13px; }
+.recorder-heading span { color: #68766b; font-size: 9px; }
+.recorder-privacy { margin: 0; padding: 9px 10px; border-left: 2px solid #9aaf84; background: #f0f4eb; color: #57665a; font-size: 10px; line-height: 1.6; }
+.camera-preview, .recorded-preview { position: relative; display: grid; min-height: 150px; aspect-ratio: 16 / 9; overflow: hidden; place-items: center; border-radius: 4px; background: #26332e; color: #e8eee8; }
+.camera-preview video, .recorded-preview video { display: block; width: 100%; max-height: 320px; aspect-ratio: 16 / 9; object-fit: contain; background: #26332e; }
+.camera-preview > span { position: absolute; color: #e8eee8; font-size: 11px; }
+.recorded-preview { min-height: auto; background: transparent; }
+.recorded-preview audio { width: 100%; }
+.recorder-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.recording-status { display: inline-flex; align-items: center; gap: 7px; color: #5d6e61; font-size: 10px; font-weight: 600; }
+.recording-status.is-recording::before { width: 8px; height: 8px; border-radius: 50%; background: #bb5848; content: ""; animation: pulse 1.1s ease-in-out infinite; }
+.recording-timer { color: #415349; font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 700; }
+.recorder-error { margin-top: 0; }
+.recorder-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.recorder-actions > button { min-height: 35px; }
 .form-error { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 11px; border: 1px solid #ebc7b9; border-radius: 4px; background: #fff8f4; color: #914e39; font-size: 11px; }
 .composer-submit { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; }
 .submit-note { display: flex; align-items: center; gap: 6px; color: #65756a; font-size: 10px; }
@@ -298,6 +315,8 @@ h1, h2, h3 { font-family: 'Manrope', sans-serif; }
   .attach-header > span:last-child { max-width: 110px; text-align: right; }
   .attach-actions { gap: 6px; }
   .attach-button { gap: 5px; padding: 0 8px; }
+  .recorder-panel { padding: 11px; }
+  .recorder-actions { gap: 6px; }
   .result-panel { padding: 16px 13px; }
   .result-heading h2 { font-size: 16px; }
   .reported-context p { flex-direction: column; gap: 2px; }

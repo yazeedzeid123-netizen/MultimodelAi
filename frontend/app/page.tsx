@@ -9,9 +9,11 @@ import {
 import Image from "next/image";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ApiRequestError, postAnalysis } from "../lib/api-client.mjs";
+import LiveMediaRecorder from "../components/LiveMediaRecorder";
 
 type Section = "today" | "history" | "privacy";
 type MediaKind = "image" | "audio" | "video";
+type RecordingKind = Exclude<MediaKind, "image">;
 type Attachment = { file: File; kind: MediaKind; preview?: string };
 type StressEstimate = {
   category: "Low" | "Moderate" | "High" | "Unclear";
@@ -98,9 +100,8 @@ export default function Home() {
   const [backendUnavailable, setBackendUnavailable] = useState(false);
   const [providerConsent, setProviderConsent] = useState(false);
   const [retryable, setRetryable] = useState(false);
+  const [recorderKind, setRecorderKind] = useState<RecordingKind | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
-  const audioInput = useRef<HTMLInputElement>(null);
-  const videoInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -143,6 +144,15 @@ export default function Home() {
       if (removed?.preview) URL.revokeObjectURL(removed.preview);
       return current.filter((item) => item.kind !== kind);
     });
+  }
+
+  function confirmRecording(kind: MediaKind, file: File) {
+    setError("");
+    if (!file.size) { setError("The recording is empty. Record it again before submitting."); return; }
+    if (file.size > maxBytes[kind]) { setError(`The ${kind} recording is larger than ${kind === "image" ? "10" : "20"} MB.`); return; }
+    if (!accepted[kind].includes(file.type)) { setError(`This browser produced an unsupported ${kind} recording format (${file.type || "unknown"}).`); return; }
+    setAttachments((current) => [...current.filter((item) => item.kind !== kind), { file, kind }]);
+    setRecorderKind(null);
   }
 
   async function analyze(event: FormEvent<HTMLFormElement>) {
@@ -290,12 +300,11 @@ export default function Home() {
               <div className="attach-header"><span>ADD CONTEXT <span className="optional-tag">OPTIONAL</span></span><span>Text alone is always enough.</span></div>
               <div className="attach-actions">
                 <button type="button" className="attach-button" onClick={() => imageInput.current?.click()}><ImagePlus size={17} /><span>Photo</span><Plus size={14} className="attach-plus" /></button>
-                <button type="button" className="attach-button" onClick={() => audioInput.current?.click()}><Mic size={17} /><span>Audio</span><Plus size={14} className="attach-plus" /></button>
-                <button type="button" className="attach-button" onClick={() => videoInput.current?.click()}><Video size={17} /><span>Video</span><Plus size={14} className="attach-plus" /></button>
+                <button type="button" className="attach-button" onClick={() => { setError(""); setRecorderKind("audio"); }}><Mic size={17} /><span>Record audio</span><Plus size={14} className="attach-plus" /></button>
+                <button type="button" className="attach-button" onClick={() => { setError(""); setRecorderKind("video"); }}><Video size={17} /><span>Record video</span><Plus size={14} className="attach-plus" /></button>
                 <input ref={imageInput} type="file" accept={accepted.image.join(",")} className="visually-hidden" onChange={(event) => addFile(event, "image")} aria-label="Choose an image" />
-                <input ref={audioInput} type="file" accept={accepted.audio.join(",")} className="visually-hidden" onChange={(event) => addFile(event, "audio")} aria-label="Choose an audio file" />
-                <input ref={videoInput} type="file" accept={accepted.video.join(",")} className="visually-hidden" onChange={(event) => addFile(event, "video")} aria-label="Choose a video" />
               </div>
+              {recorderKind && <LiveMediaRecorder kind={recorderKind} onConfirm={(file) => confirmRecording(recorderKind, file)} onCancel={() => setRecorderKind(null)} />}
               {attachments.length > 0 && <div className="attachment-list" aria-label="Attached files">{attachments.map((item) => <div className="attachment-item" key={item.kind}>
                 {item.preview ? <Image src={item.preview} alt="Selected image preview" width={30} height={30} unoptimized /> : item.kind === "audio" ? <FileAudio size={19} /> : <FileVideo size={19} />}
                 <span><strong>{item.file.name}</strong><small>{(item.file.size / 1024 / 1024).toFixed(1)} MB · {item.kind}</small></span>
