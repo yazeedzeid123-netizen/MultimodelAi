@@ -1,0 +1,49 @@
+app:
+  name: AURA
+  mode: mock
+  log_level: INFO
+
+api:
+  host: 127.0.0.1
+  port: 8000
+  request_timeout_seconds: 45
+  max_upload_bytes: 20971520
+  allowed_origins:
+    - http://localhost:3000
+    - http://127.0.0.1:3000
+
+reflection:
+  tone: gentle
+  max_length_chars: 2400
+  save_by_default: false
+
+media:
+  image_max_bytes: 10485760
+  audio_max_bytes: 20971520
+  video_max_bytes: 20971520
+  audio_max_duration_seconds: 300
+  video_max_duration_seconds: 60
+  video_frame_count: 8
+  video_max_duration_seconds: 60
+  cache_enabled: false
+  temporary_directory: ./var/tmp
+
+providers:
+  text:
+    enabled: false
+    model: ""
+    timeout_seconds: 20
+  image:
+    enabled: false
+    model: ""
+  audio:
+    enabled: false
+    model: ""
+  speech:
+    enabled: false
+    model: ""
+
+storage:
+  mode: memory
+  database_path: ./var/aura.sqlite3
+  retain_days: 0

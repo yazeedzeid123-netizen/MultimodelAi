@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "purpose": "Optional descriptive tags for research and interface organization; not diagnoses or ground truth about a person's internal state.",
+  "labels": [
+    {
+      "id": "user_reported_experience",
+      "display_name": "User-reported experience",
+      "evidence_type": "user_statement",
+      "definition": "An experience or feeling explicitly described by the user.",
+      "may_infer_internal_state": false
+    },
+    {
+      "id": "visible_content",
+      "display_name": "Visible content",
+      "evidence_type": "direct_observation",
+      "definition": "Objects, settings, or activities visibly present in an image or sampled video frame.",
+      "may_infer_internal_state": false
+    },
+    {
+      "id": "audible_event",
+      "display_name": "Audible event",
+      "evidence_type": "direct_observation",
+      "definition": "Speech transcription or an environmental sound supported by the audio.",
+      "may_infer_internal_state": false
+    },
+    {
+      "id": "tentative_theme",
+      "display_name": "Possible theme",
+      "evidence_type": "tentative_interpretation",
+      "definition": "A cautious interpretation grounded in available evidence and explicitly presented as uncertain.",
+      "may_infer_internal_state": false
+    },
+    {
+      "id": "insufficient_evidence",
+      "display_name": "Insufficient evidence",
+      "evidence_type": "quality_status",
+      "definition": "Available input does not support a useful or reliable interpretation.",
+      "may_infer_internal_state": false
+    }
+  ]
+}
