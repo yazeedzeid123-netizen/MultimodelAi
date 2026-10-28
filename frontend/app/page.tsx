@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ApiRequestError, postAnalysis } from "../lib/api-client.mjs";
 
 type Section = "today" | "history" | "privacy";
 type MediaKind = "image" | "audio" | "video";
@@ -49,7 +50,7 @@ type Reflection = {
 };
 type BackendStatus = { providers_configured: boolean; vision: boolean; transcription: boolean; text_generation: boolean };
 
-const apiBase = (process.env.NEXT_PUBLIC_AURA_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const apiBase = "/api";
 
 const maxBytes: Record<MediaKind, number> = { image: 10_485_760, audio: 20_971_520, video: 20_971_520 };
 const accepted: Record<MediaKind, string[]> = {
@@ -96,6 +97,7 @@ export default function Home() {
   const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
   const [backendUnavailable, setBackendUnavailable] = useState(false);
   const [providerConsent, setProviderConsent] = useState(false);
+  const [retryable, setRetryable] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
@@ -127,6 +129,7 @@ export default function Home() {
     event.target.value = "";
     if (!file) return;
     setError("");
+    setRetryable(false);
     if (!file.size) { setError("That file is empty. Choose a different file."); return; }
     if (file.size > maxBytes[kind]) { setError(`${kind[0].toUpperCase()}${kind.slice(1)} files must be smaller than ${kind === "image" ? "10" : "20"} MB.`); return; }
     if (!accepted[kind].includes(file.type)) { setError(`That ${kind} format is not supported. Choose a supported ${kind} file.`); return; }
@@ -154,12 +157,7 @@ export default function Home() {
     attachments.forEach((item) => payload.append(item.kind, item.file, item.file.name));
     payload.append("consent_to_provider", String(providerConsent));
     try {
-      const response = await fetch(`${apiBase}/analyze`, { method: "POST", body: payload, signal: AbortSignal.timeout(60_000) });
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(typeof body.detail === "string" ? body.detail : "AURA could not process this reflection.");
-      }
-      const analysis = body as AnalysisResult;
+      const analysis = await postAnalysis(payload) as AnalysisResult;
       const modalities = Object.entries(analysis.modality_results)
         .filter(([, value]) => value.status === "processed")
         .map(([name]) => `${name[0].toUpperCase()}${name.slice(1)}`);
@@ -174,9 +172,10 @@ export default function Home() {
       setBackendUnavailable(false);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to reach the AURA backend.";
-      if (caught instanceof TypeError || message.includes("Failed to fetch")) {
+      if (caught instanceof ApiRequestError && caught.kind === "network") {
         setBackendUnavailable(true);
         setError("AURA's analysis service is unavailable. Showing a local fallback; attached media was not analyzed.");
+        setRetryable(true);
         const fallback = makeReflection(journal, attachments);
         fallback.analysis = {
           request_id: fallback.id,
@@ -200,6 +199,7 @@ export default function Home() {
         setResult(fallback);
       } else {
         setError(message);
+        setRetryable(caught instanceof ApiRequestError && caught.retryable);
       }
     } finally {
       setAnalyzing(false);
@@ -306,7 +306,7 @@ export default function Home() {
               <input type="checkbox" checked={providerConsent} onChange={(event) => setProviderConsent(event.target.checked)} />
               <span>I agree to send the text and selected media in this reflection to the configured AI provider for processing. The provider may retain data under its own policies.</span>
             </label>}
-            {error && <div role="alert" className="form-error"><CircleHelp size={16} />{error}</div>}
+            {error && <div role="alert" className="form-error"><CircleHelp size={16} /><span>{error}</span>{retryable && <button type="submit" className="retry-button" disabled={analyzing}>Retry</button>}</div>}
             <div className="composer-submit"><span className="submit-note"><ShieldCheck size={15} />No diagnosis. Your words lead.</span>
               <button type="submit" className="primary-button" disabled={analyzing || Boolean(consentNeeded && !providerConsent)}>{analyzing ? <><span className="spinner" />Taking a moment...</> : <>Reflect with AURA <ArrowRight size={16} /></>}</button>
             </div>

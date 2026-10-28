@@ -43,13 +43,15 @@ source .venv/bin/activate
 uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
-The API health check is http://127.0.0.1:8000/health. The frontend shows a clearly labeled local fallback when the API is unavailable.
+The API health check is http://127.0.0.1:8000/health. The frontend calls the same-origin `/api` path; Next.js proxies it to `AURA_BACKEND_URL` server-side (default `http://127.0.0.1:8000`). This avoids browser loopback and cross-origin failures in forwarded development environments. The frontend shows a clearly labeled local fallback only when the backend cannot be reached.
 
 ## Test and build
 
 ```bash
 PYTHONPATH=backend pytest backend/tests -q
 npm --prefix frontend run build
+npm --prefix frontend test
+npm --prefix frontend run lint
 npm --prefix frontend audit --omit=dev
 ```
 
@@ -64,6 +66,13 @@ set +a
 ```
 
 The frontend displays a consent checkbox when the backend reports an active provider. Without consent, provider processing is rejected. The adapter sends requests to `AURA_OPENAI_BASE_URL` using the configured vision, transcription, and text model identifiers. The provider model IDs must support the requested endpoint and JSON response format; this project does not assume or bundle a model ID.
+
+Test the request through the same URL the browser uses:
+
+```bash
+curl http://127.0.0.1:3000/api/ready
+curl -F 'text=I felt overwhelmed by the deadline.' http://127.0.0.1:3000/api/analyze
+```
 
 FFmpeg and ffprobe are optional. If installed, short supported videos are duration-checked, sampled at up to four representative points, and their audio is extracted for transcription. If extraction tools are missing or extraction fails, the result records the video as skipped/failed.
 

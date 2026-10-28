@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.analysis import UploadedMedia, analyze_inputs, estimate_stress
+from app.analysis import StressEstimate, UploadedMedia, WellnessActivity, analyze_inputs, estimate_stress, recommend_activities
 from app.main import app
 from app.providers import OpenAICompatibleProvider, ProviderError
 
@@ -72,6 +72,42 @@ def test_explicit_overwhelm_is_high_with_grounded_evidence() -> None:
     assert result.supporting_evidence
 
 
+def test_requested_journal_with_image_keeps_text_analysis_when_vision_unavailable() -> None:
+    journal = (
+        "Honestly, today has been extremely overwhelming. I had so many tasks to finish at work, and even though I kept trying to manage everything, I felt like I was constantly running out of time. "
+        "I barely took any breaks, skipped lunch because I was trying to meet a deadline, and kept thinking about all the things I still needed to do. My shoulders felt tense, I had a headache, and I found it difficult to concentrate on one task at a time. "
+        "Even after finishing some of my work, I couldn't relax because I was worried about what I might have forgotten. I feel mentally exhausted, and I don't want to do anything else today. I just want some peace, to switch off my mind for a while, and to stop feeling like I have to keep pushing myself. "
+        "I know I completed a lot, but right now I feel drained rather than satisfied."
+    )
+    response = client.post(
+        "/analyze",
+        data={"text": journal},
+        files={"image": ("moment.png", b"\x89PNG\r\n\x1a\nplaceholder", "image/png")},
+    )
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["stress_estimate"]["category"] == "High"
+    assert payload["stress_estimate"]["confidence"] in {"Medium", "High"}
+    assert any("overwhelming" in item.casefold() for item in payload["stress_estimate"]["supporting_evidence"])
+    assert payload["modality_results"]["text"]["status"] == "processed"
+    assert payload["modality_results"]["image"]["status"] == "skipped"
+    assert len(payload["activities"]) == 3
+    assert payload["activities"][2]["title"] == "A slow, comfortable walk"
+    assert payload["activities"][2]["youtube_url"].startswith("https://www.youtube.com/results?search_query=")
+
+
+def test_vision_failure_does_not_hide_high_text_stress() -> None:
+    result = asyncio.run(analyze_inputs(
+        "I feel overwhelmed by the deadline and can't relax.",
+        {"image": UploadedMedia("photo.png", b"image", "image/png"), "audio": None, "video": None},
+        True,
+        FakeProvider(image_error=True),
+    ))
+    assert result.stress_estimate.category == "High"
+    assert result.modality_results["image"]["status"] == "failed"
+    assert result.uncertainty_notes
+
+
 def test_contradictory_stress_cues_are_unclear() -> None:
     result = estimate_stress("I felt calm this morning, but overwhelmed by the afternoon.")
     assert result.category == "Unclear"
@@ -96,6 +132,70 @@ def test_generated_activities_use_youtube_search_links() -> None:
     assert activity["duration"]
     assert activity["first_step"]
     assert activity["youtube_url"].startswith("https://www.youtube.com/results?search_query=")
+
+
+@pytest.mark.parametrize(
+    ("category", "text", "first_titles", "third_title", "query_phrase"),
+    [
+        ("High", "I feel overwhelmed and want to switch off.", ["Step away for a moment", "Gentle breathing"], "walk", "gentle+slow+walking"),
+        ("Moderate", "I feel pressure and would prefer walking.", ["Take a short reset", "Gentle stretching"], "walk", "10+minute+walking"),
+        ("Low", "I feel calm and enjoy cycling.", ["Mark one thing that went well", "Enjoy a mindful walk"], "cycle", "beginner+easy+cycling"),
+        ("Unclear", "Today was unusual.", ["Take a quiet pause", "Step outside if it suits you"], "walk", "10+minute+walking"),
+    ],
+)
+def test_third_activity_matches_stress_category_and_preserves_first_two(
+    category: str,
+    text: str,
+    first_titles: list[str],
+    third_title: str,
+    query_phrase: str,
+) -> None:
+    estimate = StressEstimate(category=category, confidence="Low", explanation="Test estimate.", uncertainty="Optional suggestion.")
+    activities = recommend_activities(estimate, text)
+    assert [activity.title for activity in activities[:2]] == first_titles
+    third = activities[2]
+    assert third_title in third.title.casefold()
+    assert third.duration
+    assert third.why
+    assert third.first_step
+    assert third.youtube_url.startswith("https://www.youtube.com/results?search_query=")
+    assert query_phrase in third.youtube_url
+
+
+def test_high_stress_activity_accounts_for_physical_limitations() -> None:
+    estimate = StressEstimate(category="High", confidence="High", explanation="Explicit report.", uncertainty="Non-clinical.")
+    third = recommend_activities(estimate, "I feel overwhelmed and have a knee injury.")[2]
+    assert third.title == "Comfortable seated movement"
+    assert "stop if it hurts" in third.first_step
+    assert "seated+stretching" in third.youtube_url
+
+
+def test_physical_pain_uses_the_seated_low_intensity_option() -> None:
+    estimate = StressEstimate(category="Moderate", confidence="Medium", explanation="Reported pressure.", uncertainty="Non-clinical.")
+    third = recommend_activities(estimate, "I feel pressure and hurt my knee yesterday.")[2]
+    assert third.title == "Comfortable seated movement"
+    assert "stop if it hurts" in third.first_step
+
+
+def test_unclear_activity_says_it_is_not_a_stress_conclusion() -> None:
+    estimate = StressEstimate(category="Unclear", confidence="Low", explanation="Insufficient evidence.", uncertainty="Unclear.")
+    third = recommend_activities(estimate, "A photo of my commute.")[2]
+    assert "not based on a conclusion about your stress level" in third.why
+
+
+def test_activity_schema_rejects_non_youtube_and_direct_video_links() -> None:
+    with pytest.raises(ValueError):
+        WellnessActivity(title="Walk", why="Optional movement.", duration="5 minutes", first_step="Step outside.", youtube_url="https://example.com/")
+    with pytest.raises(ValueError):
+        WellnessActivity(title="Walk", why="Optional movement.", duration="5 minutes", first_step="Step outside.", youtube_url="https://www.youtube.com/watch?v=unverified")
+
+
+def test_severe_distress_keeps_existing_first_two_and_adds_gentle_movement() -> None:
+    estimate = StressEstimate(category="High", confidence="High", explanation="Explicit report.", uncertainty="Non-clinical.")
+    activities = recommend_activities(estimate, "I feel overwhelmed.", severe_distress=True)
+    assert [item.title for item in activities[:2]] == ["Reach someone you trust", "A quiet pause"]
+    assert activities[2].title == "A slow, comfortable walk"
+    assert activities[2].youtube_url.startswith("https://www.youtube.com/results?search_query=")
 
 
 class FakeProvider:

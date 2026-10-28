@@ -9,9 +9,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlsplit, parse_qs
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .providers import OpenAICompatibleProvider, ProviderError
 
@@ -34,6 +34,19 @@ class WellnessActivity(BaseModel):
     duration: str
     first_step: str
     youtube_url: str
+
+    @field_validator("youtube_url")
+    @classmethod
+    def require_youtube_search_link(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "www.youtube.com"
+            or parsed.path != "/results"
+            or not parse_qs(parsed.query).get("search_query")
+        ):
+            raise ValueError("activity resources must be HTTPS YouTube search links")
+        return value
 
 
 class AnalysisResult(BaseModel):
@@ -64,9 +77,9 @@ class UploadedMedia:
 
 
 HIGH_STRESS = (
-    "overwhelmed", "can't cope", "cannot cope", "under intense pressure",
+    "overwhelmed", "overwhelming", "can't cope", "cannot cope", "under intense pressure",
     "extreme pressure", "high stress", "severely stressed", "completely exhausted",
-    "at breaking point", "falling apart", "can't manage", "unmanageable",
+    "mentally exhausted", "at breaking point", "falling apart", "can't manage", "unmanageable",
 )
 MODERATE_STRESS = (
     "stressed", "pressure", "hard to unwind", "difficult to relax", "can't relax",
@@ -80,6 +93,11 @@ EMOTION_TERMS = (
 )
 CHALLENGE_TERMS = ("difficult", "hard", "challenge", "struggle", "pressure", "deadline", "conflict", "tired", "stress")
 ACCOMPLISHMENT_TERMS = ("finished", "completed", "accomplished", "achieved", "managed", "proud", "success", "successful", "made progress")
+STRAIN_EVIDENCE_TERMS = (
+    "tense", "headache", "difficult to concentrate", "hard to concentrate", "couldn't relax",
+    "could not relax", "can't relax", "barely took any breaks", "skipped lunch", "running out of time",
+    "mentally exhausted", "drained",
+)
 SEVERE_DISTRESS_TERMS = ("suicid", "self-harm", "hurt myself", "end my life", "can't keep myself safe", "cannot keep myself safe")
 
 
@@ -105,7 +123,7 @@ def estimate_stress(text: str) -> StressEstimate:
     high = [term for term in HIGH_STRESS if _has_unnegated(normalized, term)]
     moderate = [term for term in MODERATE_STRESS if _has_unnegated(normalized, term)]
     low = [term for term in LOW_STRESS if _has_unnegated(normalized, term)]
-    support = _matching_sentences(text, HIGH_STRESS + MODERATE_STRESS + LOW_STRESS)
+    support = _matching_sentences(text, HIGH_STRESS + MODERATE_STRESS + LOW_STRESS + STRAIN_EVIDENCE_TERMS)
 
     if low and (high or moderate):
         return StressEstimate(
@@ -153,11 +171,100 @@ def _activity(title: str, why: str, duration: str, first_step: str, query: str) 
     )
 
 
+def _movement_activity(category: StressCategory, text: str) -> WellnessActivity:
+    lower = text.casefold()
+    limitation_terms = (
+        "injury", "injured", "physical limitation", "mobility issue", "can't walk", "cannot walk",
+        "limited mobility", "can't exercise", "cannot exercise", "knee pain", "back pain", "joint pain",
+        "in pain", "painful", "pain", "sore", "hurt my", "hurts to", "discomfort",
+        "recovering from surgery", "sprained", "fractured",
+    )
+    has_limitation = any(term in lower for term in limitation_terms)
+
+    if has_limitation:
+        return _activity(
+            "Comfortable seated movement",
+            "You mentioned a physical limitation or discomfort, so a small seated movement is an option only if it feels comfortable; skip it if it causes pain or conflicts with your care advice.",
+            "5 minutes",
+            "Choose one gentle shoulder or ankle movement within a comfortable range, and stop if it hurts.",
+            "gentle seated stretching mobility beginner",
+        )
+
+    if category == "High":
+        if "prefer yoga" in lower or "i like yoga" in lower:
+            title, query = "Restorative yoga, at your pace", "gentle restorative yoga beginners 10 minutes"
+            first_step = "Choose one comfortable pose and leave whenever you want."
+        elif "enjoy walking" in lower or "prefer walking" in lower:
+            title, query = "A slow, short walk", "gentle slow walking unwind 10 minutes"
+            first_step = "Take an easy route and turn back whenever you have had enough."
+        else:
+            title, query = "A slow, comfortable walk", "gentle slow walking unwind 10 minutes"
+            first_step = "Step outside or walk somewhere comfortable for a few minutes; stopping early is fine."
+        return _activity(
+            title,
+            "With a demanding day behind you, a gentle change of pace may feel more manageable than another workout; it is optional and does not need to fix anything.",
+            "5–10 minutes",
+            first_step,
+            query,
+        )
+
+    if category == "Moderate":
+        if "prefer walking" in lower or "want a walk" in lower or "enjoy walking" in lower:
+            title, query = "An easy 10-minute walk", "10 minute walking workout beginner"
+            first_step = "Pick a comfortable route and walk at a pace that lets you talk easily."
+        elif "prefer cycling" in lower or "enjoy cycling" in lower:
+            title, query = "Relaxed beginner cycling", "beginner easy cycling workout"
+            first_step = "Use a comfortable setting and pedal gently for a few minutes."
+        else:
+            title, query = "Beginner gentle yoga", "gentle restorative yoga for stress relief beginners"
+            first_step = "Choose a beginner routine and try only the movements that feel comfortable."
+        return _activity(
+            title,
+            "A short, manageable movement break may help you change gears without turning self-care into another task.",
+            "5–10 minutes",
+            first_step,
+            query,
+        )
+
+    if category == "Low":
+        if "prefer cycling" in lower or "enjoy cycling" in lower:
+            title, query = "Enjoy an easy cycle", "beginner easy cycling workout"
+            first_step = "Choose a familiar, comfortable route and keep the pace relaxed."
+        elif "prefer yoga" in lower or "enjoy yoga" in lower:
+            title, query = "A light beginner yoga flow", "beginner gentle yoga 10 minutes"
+            first_step = "Pick a short beginner flow and skip anything that does not feel good."
+        else:
+            title, query = "A little low-impact dancing", "10 minute low impact dance workout beginner"
+            first_step = "Put on a song you enjoy and move in whatever way feels fun."
+        return _activity(
+            title,
+            "You described the day as manageable; enjoyable movement can be a simple way to maintain wellbeing, not a measure of achievement.",
+            "5–10 minutes",
+            first_step,
+            query,
+        )
+
+    if "prefer stretching" in lower or "want to stretch" in lower:
+        title, query = "Gentle stretching", "5 minute gentle full body stretch"
+        first_step = "Try one comfortable stretch and stop if anything feels uncomfortable."
+    else:
+        title, query = "A short, comfortable walk", "10 minute walking workout beginner"
+        first_step = "Walk somewhere comfortable at an easy pace, and turn back whenever you like."
+    return _activity(
+        title,
+        "This is a general, low-intensity wellbeing option; it is not based on a conclusion about your stress level.",
+        "5–10 minutes",
+        first_step,
+        query,
+    )
+
+
 def recommend_activities(stress: StressEstimate, text: str, severe_distress: bool = False) -> list[WellnessActivity]:
     if severe_distress:
         return [
             _activity("Reach someone you trust", "You shared something that sounds especially difficult; you do not have to handle it alone.", "A few minutes", "Text or call someone you trust and tell them what support would help.", "how to reach out to a trusted person for support"),
             _activity("A quiet pause", "Keep the next step small and low-pressure while you get support.", "2 minutes", "Sit somewhere you feel safe and notice one comfortable breath without trying to change it.", "gentle grounding exercise 2 minutes"),
+            _movement_activity(stress.category, text),
         ]
     category = stress.category
     lower = text.casefold()
@@ -165,23 +272,25 @@ def recommend_activities(stress: StressEstimate, text: str, severe_distress: boo
         return [
             _activity("Step away for a moment", "You described substantial strain, so a short pause may create a little room without adding another demand.", "5 minutes", "Move to a quieter spot and let your shoulders rest.", "guided breathing exercise 5 minutes"),
             _activity("Gentle breathing", "A comfortable, unforced pause may feel more manageable than a demanding activity today.", "3 minutes", "Breathe naturally and let the exhale be easy; stop if it feels uncomfortable.", "gentle guided breathing exercise 3 minutes"),
-            _activity("Reach out for support", "Sharing the load with someone you trust may help you feel less alone with it.", "5 minutes", "Send one person a short message about what would help right now.", "how to reach out to a trusted person for support"),
+            _movement_activity(category, text),
         ]
     if category == "Moderate":
         return [
             _activity("Take a short reset", "You mentioned pressure or tiredness; a brief pause can be a realistic first step.", "5 minutes", "Step away from your current task and get a glass of water.", "guided breathing exercise 5 minutes"),
             _activity("Gentle stretching", "A low-effort movement break may help break up a demanding day.", "5–10 minutes", "Try a few comfortable shoulder and neck stretches, stopping if anything hurts.", "beginner gentle stretching 10 minutes"),
-            _activity("Choose one next priority", "If several responsibilities are competing for attention, naming one small next step may make them feel more workable.", "3 minutes", "Write down one thing that can wait and one thing you want to do next.", "how to choose one priority reduce overwhelm"),
+            _movement_activity(category, text),
         ]
     if category == "Low":
         accomplishment = next(iter(_matching_sentences(text, ACCOMPLISHMENT_TERMS)), "You described the day as manageable.")
         return [
             _activity("Mark one thing that went well", f"You shared: “{accomplishment[:140]}” Taking a moment to notice it can help you close the day on your own terms.", "2 minutes", "Write one detail you would like to remember.", "short gratitude reflection 2 minutes"),
             _activity("Enjoy a mindful walk", "A gentle change of scene can be a pleasant way to carry a manageable day forward.", "10 minutes", "Choose a comfortable route and notice a few things around you.", "guided mindful walking"),
+            _movement_activity(category, text),
         ]
     return [
         _activity("Take a quiet pause", "Your stress level is unclear, so start with an optional, low-pressure reset rather than assuming what you need.", "2 minutes", "Pause and ask yourself whether you want movement, rest, or company.", "gentle grounding exercise 2 minutes"),
         _activity("Step outside if it suits you", "A short change of scene is one option; you can skip it if rest feels better.", "5–10 minutes", "Notice the air and surroundings at a comfortable pace.", "guided mindful walking"),
+        _movement_activity(category, text),
     ]
 
 
