@@ -4,7 +4,7 @@ AURA is a non-clinical reflection experience. The existing responsive website no
 
 ## Current status
 
-- Implemented: existing Today composer and upload controls; backend multipart submission; opt-in consent before external model calls; configurable image descriptions, speech transcription, video frame/audio extraction (when FFmpeg is installed), deterministic evidence-aware stress estimate, grounded reflection fallback, activity recommendations with YouTube search links, browser-local save/reload/delete, privacy settings disclosure, and responsive footer showing **“Copyrights for Dr Shimaa Zeid”**.
+- Implemented: existing Today composer and image upload plus opt-in live camera capture; live audio/video recording; backend multipart submission; opt-in consent before external model calls; configurable image descriptions, speech transcription, video frame/audio extraction (when FFmpeg is installed), deterministic evidence-aware stress estimate, personalized wellness broadcast with YouTube search link, optional sourced Qur'anic duaa, activity recommendations, browser-local save/reload/delete, and responsive footer showing **“Copyrights for Dr Shimaa Zeid”**.
 - Not implemented: authentication, server persistence, cross-device history, transformer teaching models, training/evaluation jobs, Colab server, verified specific YouTube videos, or production deployment configuration.
 - The current environment has no provider credential and no FFmpeg/ffprobe. Real provider inference and real video extraction were not smoke-tested here. Mock/fake-provider tests cover processing, fallback, uncertainty, and failures.
 
@@ -56,7 +56,9 @@ npm --prefix frontend run lint
 npm --prefix frontend audit --omit=dev
 ```
 
-The opt-in Playwright suite uses Chromium fake media devices for live recording tests. Install Chromium with `npx --prefix frontend playwright install chromium`; on Linux images missing browser system libraries, install them with administrator privileges using `npx --prefix frontend playwright install-deps chromium`. Real camera/microphone access requires HTTPS or localhost and explicit browser permission.
+The opt-in Playwright suite uses Chromium fake media devices for live photo/audio/video tests. Install Chromium with `npx --prefix frontend playwright install chromium`; on Linux images missing browser system libraries, install them with administrator privileges using `npx --prefix frontend playwright install-deps chromium`. In this development container the browser tests cannot launch because `libatk-1.0.so.0` and other Chromium system libraries are absent. Real camera/microphone access requires HTTPS or localhost and explicit browser permission.
+
+Islamic spiritual support is off by default. Turn it on under Privacy & settings. The displayed supplications are Qur'anic verses with surah/ayah references and verified English translation; no unverified hadith or transliteration is labeled authentic. Broadcast URLs are YouTube search-result links, not claimed verified videos.
 
 ## Configure real providers
 

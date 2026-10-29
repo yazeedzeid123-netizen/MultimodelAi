@@ -51,6 +51,31 @@ test("video previews, records, plays, retakes, and submits a confirmed clip", as
   await expect(page.locator(".modality-row").filter({ hasText: "Video" })).toContainText("Not processed");
 });
 
+test("camera photo capture supports preview, retake, confirmation, and the existing image upload field", async ({ page }) => {
+  let submittedBody = "";
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/analyze")) submittedBody = request.postData() || "";
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Take a Photo" }).click();
+  await page.getByRole("button", { name: "Open Camera" }).click();
+  await expect(page.locator("video[aria-label='Live camera preview']")).toBeVisible();
+  await page.getByRole("button", { name: "Capture Photo" }).click();
+  await expect(page.locator("img[alt='Captured photo preview']")).toBeVisible();
+  await page.getByRole("button", { name: "Retake" }).click();
+  await expect(page.locator("video[aria-label='Live camera preview']")).toBeVisible();
+  await page.getByRole("button", { name: "Capture Photo" }).click();
+  await page.getByRole("button", { name: "Use Photo" }).click();
+  await expect(page.getByText(/aura-photo-.*\.jpg/)).toBeVisible();
+  await page.getByLabel("YOUR NOTES").fill("A walk after work.");
+  await page.getByRole("button", { name: "Reflect with AURA" }).click();
+  await expect(page.locator(".modality-row").filter({ hasText: "Image" })).toContainText("Not processed");
+  expect(submittedBody).toContain('name="image"');
+  expect(submittedBody).toContain('filename="aura-photo-');
+  expect(submittedBody).toContain("image/jpeg");
+});
+
 test("permission denial gives a clear message without creating an attachment", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "mediaDevices", {
@@ -68,4 +93,30 @@ test("permission denial gives a clear message without creating an attachment", a
   await page.getByRole("button", { name: "Enable camera preview" }).click();
   await expect(page.getByRole("alert")).toContainText("Allow camera and microphone access");
   await expect(page.locator(".attachment-item")).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel video recording" }).click();
+  await page.getByRole("button", { name: "Take a Photo" }).click();
+  await page.getByRole("button", { name: "Open Camera" }).click();
+  await expect(page.getByRole("alert")).toContainText("Allow camera access");
+  await expect(page.locator(".attachment-item")).toHaveCount(0);
+});
+
+test("Islamic support is hidden by default and follows the user's saved preference", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#journal-entry").fill("I feel overwhelmed by my responsibilities.");
+  await page.getByRole("button", { name: "Reflect with AURA" }).click();
+  await expect(page.locator(".result-panel")).toBeVisible();
+  await expect(page.locator(".duaa-card")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Privacy & settings" }).click();
+  const supportToggle = page.getByRole("checkbox", { name: "Show Islamic spiritual support" });
+  await supportToggle.check();
+  await page.getByRole("button", { name: "Today" }).click();
+  await page.getByRole("button", { name: "Reflect with AURA" }).click();
+  await expect(page.locator(".duaa-card")).toBeVisible();
+  await expect(page.locator(".duaa-card [lang='ar'][dir='rtl']")).toBeVisible();
+
+  await page.getByRole("button", { name: "Privacy & settings" }).click();
+  await supportToggle.uncheck();
+  await page.getByRole("button", { name: "Today" }).click();
+  await expect(page.locator(".duaa-card")).toHaveCount(0);
 });

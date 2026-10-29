@@ -131,6 +131,7 @@ async def analyze(
     audio: Annotated[UploadFile | None, File()] = None,
     video: Annotated[UploadFile | None, File()] = None,
     consent_to_provider: Annotated[bool, Form()] = False,
+    show_islamic_support: Annotated[bool, Form()] = False,
 ) -> ReflectionResponse:
     started = time.perf_counter()
     uploads: dict[MediaName, UploadFile | None] = {"image": image, "audio": audio, "video": video}
@@ -146,7 +147,7 @@ async def analyze(
     try:
         timeout_seconds = max(5, min(180, int(os.getenv("AURA_ANALYSIS_TIMEOUT_SECONDS", "120"))))
         async with asyncio.timeout(timeout_seconds):
-            result = await analyze_inputs(note, media, consent_to_provider, OpenAICompatibleProvider())
+            result = await analyze_inputs(note, media, consent_to_provider, OpenAICompatibleProvider(), show_islamic_support)
     except PermissionError as error:
         raise HTTPException(status_code=428, detail=str(error)) from error
     except TimeoutError as error:

@@ -2,7 +2,7 @@
 
 import {
   ArrowDownRight, ArrowRight, AudioLines, Check, ChevronDown, CircleHelp,
-  Clock3, FileAudio, FileVideo, ImagePlus, LockKeyhole, Menu, Mic,
+  Camera, Clock3, FileAudio, FileVideo, ImagePlus, LockKeyhole, Menu, Mic,
   PenLine, Plus, RotateCcw, Settings2, ShieldCheck, Sparkles, Trash2,
   Video, X,
 } from "lucide-react";
@@ -10,6 +10,7 @@ import Image from "next/image";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ApiRequestError, postAnalysis } from "../lib/api-client.mjs";
 import LiveMediaRecorder from "../components/LiveMediaRecorder";
+import LivePhotoCapture from "../components/LivePhotoCapture";
 
 type Section = "today" | "history" | "privacy";
 type MediaKind = "image" | "audio" | "video";
@@ -23,6 +24,8 @@ type StressEstimate = {
   uncertainty: string;
 };
 type Activity = { title: string; why: string; duration: string; first_step: string; youtube_url: string };
+type WellnessBroadcast = { title: string; reason: string; duration: string; youtube_url: string; link_type: "search" };
+type IslamicSupport = { arabic_text: string; english_meaning: string; transliteration: string | null; source: string; relevance: string };
 type AnalysisResult = {
   request_id: string;
   reflection_text: string;
@@ -31,6 +34,8 @@ type AnalysisResult = {
   accomplishments: string[];
   stress_estimate: StressEstimate;
   activities: Activity[];
+  wellness_broadcast?: WellnessBroadcast;
+  islamic_support?: IslamicSupport | null;
   gentle_question: string;
   supportive_reminder: string;
   evidence_summary: string;
@@ -101,6 +106,9 @@ export default function Home() {
   const [providerConsent, setProviderConsent] = useState(false);
   const [retryable, setRetryable] = useState(false);
   const [recorderKind, setRecorderKind] = useState<RecordingKind | null>(null);
+  const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
+  const [showIslamicSupport, setShowIslamicSupport] = useState(false);
+  const [copiedDuaa, setCopiedDuaa] = useState("");
   const imageInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,6 +117,14 @@ export default function Home() {
         const stored = localStorage.getItem("aura-reflections");
         if (stored) setHistory(JSON.parse(stored) as Reflection[]);
       } catch { setHistory([]); }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try { setShowIslamicSupport(localStorage.getItem("aura-show-islamic-support") === "true"); }
+      catch { setShowIslamicSupport(false); }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -155,6 +171,42 @@ export default function Home() {
     setRecorderKind(null);
   }
 
+  function confirmPhotoCapture(file: File) {
+    addConfirmedFile(file, "image");
+    setPhotoCaptureOpen(false);
+  }
+
+  function addConfirmedFile(file: File, kind: MediaKind) {
+    setError("");
+    if (!file.size) { setError(`The ${kind} file is empty. Choose or capture it again.`); return; }
+    if (file.size > maxBytes[kind]) { setError(`The ${kind} file is larger than ${kind === "image" ? "10" : "20"} MB.`); return; }
+    if (!accepted[kind].includes(file.type)) { setError(`This ${kind} format is not supported (${file.type || "unknown"}).`); return; }
+    const preview = kind === "image" ? URL.createObjectURL(file) : undefined;
+    setAttachments((current) => {
+      const previous = current.find((item) => item.kind === kind);
+      if (previous?.preview) URL.revokeObjectURL(previous.preview);
+      return [...current.filter((item) => item.kind !== kind), { file, kind, preview }];
+    });
+  }
+
+  function setIslamicSupportPreference(enabled: boolean) {
+    setShowIslamicSupport(enabled);
+    try { localStorage.setItem("aura-show-islamic-support", String(enabled)); } catch { /* preference remains available for this session */ }
+  }
+
+  async function copyDuaa(value: string, label: string) {
+    if (!navigator.clipboard?.writeText) {
+      setCopiedDuaa("Clipboard is unavailable in this browser context");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedDuaa(`${label} copied`);
+    } catch {
+      setCopiedDuaa(`Could not copy ${label.toLowerCase()}`);
+    }
+  }
+
   async function analyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -166,6 +218,7 @@ export default function Home() {
     if (journal.trim()) payload.append("text", journal.trim());
     attachments.forEach((item) => payload.append(item.kind, item.file, item.file.name));
     payload.append("consent_to_provider", String(providerConsent));
+    payload.append("show_islamic_support", String(showIslamicSupport));
     try {
       const analysis = await postAnalysis(payload) as AnalysisResult;
       const modalities = Object.entries(analysis.modality_results)
@@ -300,10 +353,12 @@ export default function Home() {
               <div className="attach-header"><span>ADD CONTEXT <span className="optional-tag">OPTIONAL</span></span><span>Text alone is always enough.</span></div>
               <div className="attach-actions">
                 <button type="button" className="attach-button" onClick={() => imageInput.current?.click()}><ImagePlus size={17} /><span>Photo</span><Plus size={14} className="attach-plus" /></button>
+                <button type="button" className="attach-button" onClick={() => { setError(""); setPhotoCaptureOpen(true); }}><Camera size={17} /><span>Take a Photo</span></button>
                 <button type="button" className="attach-button" onClick={() => { setError(""); setRecorderKind("audio"); }}><Mic size={17} /><span>Record audio</span><Plus size={14} className="attach-plus" /></button>
                 <button type="button" className="attach-button" onClick={() => { setError(""); setRecorderKind("video"); }}><Video size={17} /><span>Record video</span><Plus size={14} className="attach-plus" /></button>
                 <input ref={imageInput} type="file" accept={accepted.image.join(",")} className="visually-hidden" onChange={(event) => addFile(event, "image")} aria-label="Choose an image" />
               </div>
+              {photoCaptureOpen && <LivePhotoCapture onConfirm={confirmPhotoCapture} onCancel={() => setPhotoCaptureOpen(false)} />}
               {recorderKind && <LiveMediaRecorder kind={recorderKind} onConfirm={(file) => confirmRecording(recorderKind, file)} onCancel={() => setRecorderKind(null)} />}
               {attachments.length > 0 && <div className="attachment-list" aria-label="Attached files">{attachments.map((item) => <div className="attachment-item" key={item.kind}>
                 {item.preview ? <Image src={item.preview} alt="Selected image preview" width={30} height={30} unoptimized /> : item.kind === "audio" ? <FileAudio size={19} /> : <FileVideo size={19} />}
@@ -338,6 +393,27 @@ export default function Home() {
                 {result.analysis.stress_estimate.supporting_evidence.length > 0 && <ul>{result.analysis.stress_estimate.supporting_evidence.map((item, index) => <li key={index}>“{item}”</li>)}</ul>}
                 <p className="uncertainty-copy">{result.analysis.stress_estimate.uncertainty}</p>
               </section>
+              {result.analysis.wellness_broadcast && <section className="broadcast-card">
+                <div className="result-section-kicker">YOUR PERSONALIZED WELLNESS BROADCAST</div>
+                <div className="broadcast-heading"><h3>{result.analysis.wellness_broadcast.title}</h3><span>{result.analysis.wellness_broadcast.duration}</span></div>
+                <p>{result.analysis.wellness_broadcast.reason}</p>
+                <a className="broadcast-link" href={result.analysis.wellness_broadcast.youtube_url} target="_blank" rel="noopener noreferrer">Watch on YouTube <ArrowRight size={14} /></a>
+                <span className="broadcast-link-note">YouTube search results; no specific video is claimed as verified.</span>
+              </section>}
+              {showIslamicSupport && result.analysis.islamic_support && <section className="duaa-card">
+                <div className="result-section-kicker">A DUAA FOR YOUR HEART <span lang="ar" dir="rtl">| دعاء لقلبك</span></div>
+                <p className="duaa-arabic" lang="ar" dir="rtl">{result.analysis.islamic_support.arabic_text}</p>
+                <p className="duaa-meaning"><strong>English meaning</strong><br />{result.analysis.islamic_support.english_meaning}</p>
+                {result.analysis.islamic_support.transliteration && <p className="duaa-transliteration"><strong>Transliteration</strong><br />{result.analysis.islamic_support.transliteration}</p>}
+                <p className="duaa-source"><strong>Source:</strong> {result.analysis.islamic_support.source}</p>
+                <p>{result.analysis.islamic_support.relevance}</p>
+                <div className="duaa-actions">
+                  <button type="button" className="text-button" onClick={() => { void copyDuaa(result.analysis!.islamic_support!.arabic_text, "Arabic"); }}>Copy Arabic</button>
+                  <button type="button" className="text-button" onClick={() => { void copyDuaa(result.analysis!.islamic_support!.english_meaning, "Meaning"); }}>Copy meaning</button>
+                  {copiedDuaa && <span role="status">{copiedDuaa}</span>}
+                </div>
+                <p className="duaa-optional-note">Optional spiritual support, only shown because you enabled it. It is not a diagnosis or a replacement for other support.</p>
+              </section>}
               <section className="evidence-section">
                 <div className="result-section-kicker">WHAT THIS IS BASED ON</div>
                 <p className="evidence-summary">{result.analysis.evidence_summary}</p>
@@ -383,6 +459,7 @@ export default function Home() {
           <div className="inner-title-row"><div><h1>Privacy, by design</h1><p className="welcome-description">Clear about what happens here, and what does not.</p></div></div>
           <div className="privacy-status"><span className="status-icon"><ShieldCheck size={21} /></span><div><span className="status-label">CURRENT MODE</span><h2>{backendUnavailable ? "Backend unavailable" : backendStatus?.providers_configured ? "Configured AI provider" : "AURA mock analysis"}</h2><p>Reflection requests are sent to the configured AURA backend. {backendStatus?.providers_configured ? "Selected inputs may be sent to its AI provider only after you opt in for that request." : backendUnavailable ? "No analysis request can be completed until the backend is available; local fallback is clearly marked." : "No third-party AI provider is configured; media understanding and transcription are unavailable."}</p></div><span className="status-pill">{backendStatus?.providers_configured ? "CONSENT REQUIRED" : backendUnavailable ? "OFFLINE" : "NO AI PROVIDER"}</span></div>
           <div className="settings-list">
+            <article className="settings-row"><div className="settings-icon"><span aria-hidden="true">دعاء</span></div><div><h3>Islamic spiritual support</h3><p>Choose whether AURA may include a short Qur&apos;anic supplication with its verified verse reference in your results. This is optional and can be turned off at any time.</p></div><label className="support-toggle"><input type="checkbox" checked={showIslamicSupport} onChange={(event) => setIslamicSupportPreference(event.target.checked)} /><span>Show Islamic spiritual support</span></label></article>
             <article className="settings-row"><div className="settings-icon"><LockKeyhole size={18} /></div><div><h3>Your journal and media</h3><p>Inputs are sent to the AURA backend for the analysis request. When an AI capability is configured, the page asks for your consent before sending selected inputs to that provider. Unconfigured or failed modalities are identified in the result.</p></div><span className="settings-value">Per-request consent</span></article>
             <article className="settings-row"><div className="settings-icon"><Check size={18} /></div><div><h3>Saved reflections</h3><p>Only saved when you choose “Save to this browser”. Saved entries use this browser&apos;s local storage and are not encrypted or synced.</p></div><span className="settings-value">Opt in</span></article>
             <article className="settings-row"><div className="settings-icon"><Settings2 size={18} /></div><div><h3>Clear saved data</h3><p>Remove all reflections stored in this browser. This cannot be undone.</p></div><button className="outline-button" onClick={() => { setHistory([]); setSelected(null); localStorage.removeItem("aura-reflections"); }}>Clear data</button></article>

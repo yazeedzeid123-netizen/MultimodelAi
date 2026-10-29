@@ -373,3 +373,75 @@ def test_model_cannot_invent_evidence_labels() -> None:
     assert result.reported_emotions == []
     assert result.challenges == []
     assert result.accomplishments == ["I finished a task."]
+
+
+def test_personalized_broadcast_uses_reported_need_and_stress() -> None:
+    high = client.post("/analyze", data={"text": "I feel overwhelmed by the deadline."}).json()
+    assert high["wellness_broadcast"]["title"] == "Gentle Breathing for a Busy Mind"
+    assert high["wellness_broadcast"]["youtube_url"].startswith("https://www.youtube.com/results?search_query=")
+
+    moderate = client.post("/analyze", data={"text": "I feel pressure and have trouble unwinding."}).json()
+    assert moderate["wellness_broadcast"]["title"] == "5-Minute Guided Relaxation"
+
+    loneliness = client.post("/analyze", data={"text": "I feel lonely today."}).json()
+    assert loneliness["wellness_broadcast"]["title"] == "A Peaceful Nature Break"
+
+    fatigue = client.post("/analyze", data={"text": "I am mentally exhausted and need rest."}).json()
+    assert fatigue["wellness_broadcast"]["title"] == "Relaxing Nature Sounds"
+
+    unclear = client.post("/analyze", data={"text": "I rode the bus to the library."}).json()
+    assert "neutral" in unclear["wellness_broadcast"]["reason"]
+
+
+def test_islamic_support_is_hidden_by_default_and_opt_in_uses_verified_quran_reference() -> None:
+    hidden = client.post("/analyze", data={"text": "I feel overwhelmed by my responsibilities."}).json()
+    assert hidden["islamic_support"] is None
+
+    shown = client.post("/analyze", data={
+        "text": "I feel overwhelmed by my responsibilities.",
+        "show_islamic_support": "true",
+    }).json()
+    support = shown["islamic_support"]
+    assert support["source"] == "Qur'an 20:25-28"
+    assert support["arabic_text"].startswith("قَالَ رَبِّ")
+    assert "ease for me my task" in support["english_meaning"]
+    assert support["transliteration"] is None
+
+    gratitude = client.post("/analyze", data={
+        "text": "I am grateful today.",
+        "show_islamic_support": "true",
+    }).json()["islamic_support"]
+    assert gratitude["source"] == "Qur'an 27:19"
+
+    mixed = client.post("/analyze", data={
+        "text": "I feel overwhelmed, but I am grateful for my family.",
+        "show_islamic_support": "true",
+    }).json()["islamic_support"]
+    assert mixed["source"] == "Qur'an 20:25-28"
+
+
+def test_broadcast_uses_existing_stress_and_explicit_emotions() -> None:
+    high = client.post("/analyze", data={"text": "I feel overwhelmed and can't relax."}).json()
+    assert high["wellness_broadcast"]["title"] == "Gentle Breathing for a Busy Mind"
+    assert high["wellness_broadcast"]["youtube_url"].startswith("https://www.youtube.com/results?search_query=")
+
+    sad = client.post("/analyze", data={"text": "I feel lonely today."}).json()
+    assert sad["wellness_broadcast"]["title"] == "A Peaceful Nature Break"
+
+    unclear = client.post("/analyze", data={"text": "I went to the library."}).json()
+    assert "neutral" in unclear["wellness_broadcast"]["reason"]
+
+
+def test_islamic_support_is_absent_by_default_and_opt_in_with_quran_source() -> None:
+    regular = client.post("/analyze", data={"text": "I felt overwhelmed by my responsibilities."}).json()
+    assert regular["islamic_support"] is None
+
+    opted_in = client.post("/analyze", data={
+        "text": "I felt overwhelmed by my responsibilities.",
+        "show_islamic_support": "true",
+    }).json()
+    support = opted_in["islamic_support"]
+    assert support["source"] == "Qur'an 20:25-28"
+    assert support["arabic_text"].startswith("قَالَ رَبِّ")
+    assert "ease for me my task" in support["english_meaning"]
+    assert support["transliteration"] is None

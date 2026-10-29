@@ -9,6 +9,8 @@ const validPayload = {
   reported_emotions: [],
   challenges: [],
   accomplishments: [],
+  wellness_broadcast: { title: "Gentle breathing", reason: "Optional pause.", duration: "5 minutes", youtube_url: "https://www.youtube.com/results?search_query=gentle+breathing", link_type: "search" },
+  islamic_support: null,
   activities: [{ title: "Pause", why: "A pause may help", duration: "5 minutes", first_step: "Sit down", youtube_url: "https://www.youtube.com/results?search_query=breathing" }],
   modality_results: { text: { status: "processed" } },
   gentle_question: "What feels most important?",
@@ -72,6 +74,11 @@ test("rejects malformed JSON and incomplete analysis schemas", async () => {
   const unsafeLinks = { ...validPayload, activities: [{ ...validPayload.activities[0], youtube_url: "https://example.com/video" }] };
   await assert.rejects(
     postAnalysis(new FormData(), { fetchImpl: async () => Response.json(unsafeLinks) }),
+    (error) => error instanceof ApiRequestError && error.kind === "malformed",
+  );
+  const missingBroadcast = { ...validPayload, wellness_broadcast: { title: "No link", reason: "", duration: "", youtube_url: "javascript:alert(1)" } };
+  await assert.rejects(
+    postAnalysis(new FormData(), { fetchImpl: async () => Response.json(missingBroadcast) }),
     (error) => error instanceof ApiRequestError && error.kind === "malformed",
   );
 });

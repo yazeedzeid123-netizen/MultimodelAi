@@ -32,6 +32,10 @@ Status: partial, existing workflow enhanced.
 
 The current Next.js composer submits through same-origin `/api/analyze`, asks for consent when selected inputs match an active provider capability, shows stress/evidence/activity results, and retains browser-local saving. Network failure produces a clearly labeled local fallback; malformed responses surface an error with retry when appropriate. Frontend API tests cover schema validation, network failure, and retries. The exact footer text remains shared across app views. From `frontend`, `npm test`, `npm run lint`, and `npm run build` passed.
 
+## Camera, wellness broadcast, and optional duaa
+
+The existing image-upload flow now also offers explicit browser camera capture, JPEG preview/retake/confirmation, and track cleanup. Results include a stress/emotion-based YouTube search recommendation and an optional Qur'anic supplication setting. Arabic and Sahih International translations were checked against Qur'an text endpoints; only exact verse references are displayed, and unverified hadith/transliteration claims are omitted. Backend/Node suites, lint, and build pass. Playwright cases were attempted but Chromium cannot launch in this container because `libatk-1.0.so.0` and related system libraries are missing.
+
 ## Remaining checkpoints
 
 Local Hugging Face model adapters, persistent storage and account authorization, transformer teaching modules, training/evaluation, browser interaction tests, real-provider smoke tests, and production deployment preparation remain outstanding. `npm audit --omit=dev` reported zero vulnerabilities. The OpenAI-compatible provider adapter and FFmpeg video path were not live-tested here. No model training or benchmark evaluation has run.

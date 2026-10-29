@@ -49,6 +49,30 @@ class WellnessActivity(BaseModel):
         return value
 
 
+class WellnessBroadcast(BaseModel):
+    title: str
+    reason: str
+    duration: str
+    youtube_url: str
+    link_type: Literal["search"] = "search"
+
+    @field_validator("youtube_url")
+    @classmethod
+    def require_youtube_search_link(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or parsed.hostname != "www.youtube.com" or parsed.path != "/results" or not parse_qs(parsed.query).get("search_query"):
+            raise ValueError("broadcast resource must be an HTTPS YouTube search link")
+        return value
+
+
+class IslamicSupport(BaseModel):
+    arabic_text: str
+    english_meaning: str
+    transliteration: str | None = None
+    source: Literal["Qur'an 20:25-28", "Qur'an 2:286", "Qur'an 27:19"]
+    relevance: str
+
+
 class AnalysisResult(BaseModel):
     reflection_text: str
     reported_emotions: list[str] = Field(default_factory=list)
@@ -56,6 +80,8 @@ class AnalysisResult(BaseModel):
     accomplishments: list[str] = Field(default_factory=list)
     stress_estimate: StressEstimate
     activities: list[WellnessActivity]
+    wellness_broadcast: WellnessBroadcast
+    islamic_support: IslamicSupport | None = None
     gentle_question: str
     supportive_reminder: str
     evidence_summary: str
@@ -85,7 +111,7 @@ MODERATE_STRESS = (
     "stressed", "pressure", "hard to unwind", "difficult to relax", "can't relax",
     "too much to do", "too much on my plate", "anxious", "worried",
 )
-LOW_STRESS = ("felt calm", "feeling calm", "relaxed", "manageable", "at ease", "unpressured")
+LOW_STRESS = ("felt calm", "feeling calm", "feel calm", "feel relaxed", "relaxed", "manageable", "at ease", "unpressured")
 NEGATIONS = ("not", "never", "wasn't", "weren't", "isn't", "aren't", "don't", "didn't", "no longer")
 EMOTION_TERMS = (
     "happy", "grateful", "proud", "excited", "calm", "sad", "angry", "worried",
@@ -294,6 +320,79 @@ def recommend_activities(stress: StressEstimate, text: str, severe_distress: boo
     ]
 
 
+def recommend_wellness_broadcast(stress: StressEstimate, text: str, emotions: list[str], challenges: list[str]) -> WellnessBroadcast:
+    lower = text.casefold()
+    explicit = {emotion.casefold() for emotion in emotions}
+    cue_text = " ".join([lower, *challenges]).casefold()
+
+    if explicit.intersection({"sad", "lonely"}) or any(word in cue_text for word in ("lonely", "feeling alone", "feel alone")):
+        title = "A Peaceful Nature Break"
+        reason = "You shared feeling sad or alone. A quiet nature break is an optional, low-pressure moment of comfort."
+        duration, query = "5–10 minutes", "peaceful nature videos soothing audio"
+    elif explicit.intersection({"angry", "frustrated"}) or "frustrat" in cue_text:
+        title = "A Calming Grounding Pause"
+        reason = "You mentioned frustration. A short grounding pause may offer a moment to slow down; it is okay to stop if it does not suit you."
+        duration, query = "5 minutes", "5 minute grounding exercise slow breathing"
+    elif any(term in cue_text for term in ("mentally exhausted", "exhausted", "fatigue", "drained", "very tired", "worn out")) or explicit.intersection({"tired", "exhausted"}):
+        title = "Relaxing Nature Sounds"
+        reason = "You described fatigue or mental exhaustion. A peaceful audio break is a low-effort option for unwinding."
+        duration, query = "5–10 minutes", "peaceful nature sounds relaxation"
+    elif stress.category == "High":
+        title = "Gentle Breathing for a Busy Mind"
+        reason = "You described substantial pressure. Consider a quiet moment without adding another task; this is optional and not a treatment."
+        duration, query = "5 minutes", "gentle guided breathing for stress relief"
+    elif stress.category == "Moderate":
+        title = "5-Minute Guided Relaxation"
+        reason = "You mentioned pressure or tension. A short relaxation break may give you a moment to pause and reset."
+        duration, query = "5 minutes", "5 minute guided relaxation for stress"
+    elif stress.category == "Low":
+        if explicit.intersection({"grateful", "happy", "hopeful", "proud"}) or "grateful" in lower:
+            title = "A Short Gratitude Reflection"
+            reason = "You shared a positive moment. A brief gratitude reflection is one optional way to savor it."
+            duration, query = "3–5 minutes", "short gratitude mindfulness reflection"
+        else:
+            title = "Uplifting Music and Mindfulness"
+            reason = "You described a manageable day. A light, enjoyable pause may support your wellbeing without setting another goal."
+            duration, query = "5–10 minutes", "uplifting music positive mindfulness"
+    else:
+        title = "A Gentle Breathing Pause"
+        reason = "Your stress level is unclear, so this is a neutral, optional relaxation resource rather than a conclusion about how you feel."
+        duration, query = "3–5 minutes", "gentle breathing relaxation 5 minutes"
+
+    return WellnessBroadcast(
+        title=title,
+        reason=reason,
+        duration=duration,
+        youtube_url=f"https://www.youtube.com/results?search_query={quote_plus(query)}",
+    )
+
+
+def recommend_islamic_support(stress: StressEstimate, text: str, emotions: list[str]) -> IslamicSupport:
+    lower = text.casefold()
+    explicit_gratitude = any(term in lower for term in ("grateful", "gratitude", "thankful"))
+    positive_low_stress = stress.category == "Low" and set(emotions).intersection({"happy", "proud"})
+    if stress.category in {"High", "Moderate"} or set(emotions).intersection({"sad", "lonely", "worried", "anxious", "overwhelmed", "tired", "frustrated"}):
+        return IslamicSupport(
+            arabic_text="قَالَ رَبِّ ٱشْرَحْ لِى صَدْرِى ۝ وَيَسِّرْ لِىٓ أَمْرِى ۝ وَٱحْلُلْ عُقْدَةًۭ مِّن لِّسَانِى ۝ يَفْقَهُوا۟ قَوْلِى",
+            english_meaning="[Moses] said, “My Lord, expand for me my breast [with assurance]. And ease for me my task. And untie the knot from my tongue. That they may understand my speech.”",
+            source="Qur'an 20:25-28",
+            relevance="This is a Qur'anic supplication asking Allah for reassurance and ease with a task. It is offered only because you enabled spiritual support; it does not imply that stress reflects weak faith.",
+        )
+    if explicit_gratitude or positive_low_stress:
+        return IslamicSupport(
+            arabic_text="رَبِّ أَوْزِعْنِىٓ أَنْ أَشْكُرَ نِعْمَتَكَ ٱلَّتِىٓ أَنْعَمْتَ عَلَىَّ وَعَلَىٰ وَٰلِدَىَّ وَأَنْ أَعْمَلَ صَٰلِحًۭا تَرْضَىٰهُ وَأَدْخِلْنِى بِرَحْمَتِكَ فِى عِبَادِكَ ٱلصَّٰلِحِينَ",
+            english_meaning="My Lord, enable me to be grateful for Your favor which You have bestowed upon me and upon my parents, and to do righteousness of which You approve. And admit me by Your mercy into [the ranks of] Your righteous servants.",
+            source="Qur'an 27:19",
+            relevance="This supplication asks for gratitude and help to do what is good; it is offered as optional spiritual support, not as an interpretation of your faith or emotional state.",
+        )
+    return IslamicSupport(
+        arabic_text="رَبَّنَا وَلَا تَحْمِلْ عَلَيْنَآ إِصْرًۭا كَمَا حَمَلْتَهُۥ عَلَى ٱلَّذِينَ مِن قَبْلِنَا ۖ رَبَّنَا وَلَا تُحَمِّلْنَا مَا لَا طَاقَةَ لَنَا بِهِۦ ۖ وَٱعْفُ عَنَّا وَٱغْفِرْ لَنَا وَٱرْحَمْنَا",
+        english_meaning="Our Lord, lay not upon us a burden like that which You laid upon those before us. Our Lord, burden us not with that which we have no ability to bear. And pardon us; and forgive us; and have mercy upon us.",
+        source="Qur'an 2:286",
+        relevance="This is an optional general supplication asking for mercy and relief from burdens; it is not a conclusion about your circumstances.",
+    )
+
+
 def _extract_video(content: bytes, mime_type: str) -> tuple[list[bytes], bytes | None, list[str]]:
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         return [], None, ["video_skipped_ffmpeg_unavailable"]
@@ -359,6 +458,7 @@ async def analyze_inputs(
     media: dict[str, UploadedMedia | None],
     consent: bool,
     provider: OpenAICompatibleProvider,
+    show_islamic_support: bool = False,
 ) -> AnalysisResult:
     note = text.strip()
     modality_results: dict[str, dict[str, Any]] = {}
@@ -468,6 +568,8 @@ async def analyze_inputs(
     stress = estimate_stress(all_words)
     severe = any(term in all_words.casefold() for term in SEVERE_DISTRESS_TERMS)
     activities = recommend_activities(stress, all_words, severe)
+    broadcast = recommend_wellness_broadcast(stress, all_words, explicit_emotions, challenges)
+    islamic_support = recommend_islamic_support(stress, all_words, explicit_emotions) if show_islamic_support else None
     text_result: dict[str, Any] | None = None
 
     if (all_words or observations) and provider.can_process_text() and consent:
@@ -521,6 +623,8 @@ async def analyze_inputs(
         accomplishments=accomplishments,
         stress_estimate=stress,
         activities=activities,
+        wellness_broadcast=broadcast,
+        islamic_support=islamic_support,
         gentle_question=gentle_question,
         supportive_reminder=supportive,
         evidence_summary=evidence_summary,

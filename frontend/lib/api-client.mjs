@@ -26,6 +26,8 @@ function isYouTubeSearchUrl(value) {
 function isAnalysisPayload(value) {
   const stringArray = (items) => Array.isArray(items) && items.every((item) => typeof item === "string");
   const stress = value?.stress_estimate;
+  const broadcast = value?.wellness_broadcast;
+  const duaa = value?.islamic_support;
   return Boolean(
     value &&
     typeof value === "object" &&
@@ -45,6 +47,17 @@ function isAnalysisPayload(value) {
     typeof value.gentle_question === "string" &&
     typeof value.supportive_reminder === "string" &&
     typeof value.evidence_summary === "string" &&
+    broadcast && typeof broadcast.title === "string" &&
+    typeof broadcast.reason === "string" &&
+    typeof broadcast.duration === "string" &&
+    broadcast.link_type === "search" &&
+    isYouTubeSearchUrl(broadcast.youtube_url) &&
+    (duaa === null || (duaa && typeof duaa === "object" &&
+      typeof duaa.arabic_text === "string" && duaa.arabic_text.length > 0 &&
+      typeof duaa.english_meaning === "string" && duaa.english_meaning.length > 0 &&
+      (duaa.transliteration === null || typeof duaa.transliteration === "string") &&
+      ["Qur'an 20:25-28", "Qur'an 2:286", "Qur'an 27:19"].includes(duaa.source) &&
+      typeof duaa.relevance === "string")) &&
     Array.isArray(value.provider_trace) &&
     Number.isFinite(value.timing_ms) &&
     typeof value.save_status === "string" &&
