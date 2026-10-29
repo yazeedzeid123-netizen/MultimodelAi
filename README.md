@@ -51,9 +51,12 @@ The API health check is http://127.0.0.1:8000/health. The frontend calls the sam
 PYTHONPATH=backend pytest backend/tests -q
 npm --prefix frontend run build
 npm --prefix frontend test
+npm --prefix frontend run test:e2e
 npm --prefix frontend run lint
 npm --prefix frontend audit --omit=dev
 ```
+
+The opt-in Playwright suite uses Chromium fake media devices for live recording tests. Install Chromium with `npx --prefix frontend playwright install chromium`; on Linux images missing browser system libraries, install them with administrator privileges using `npx --prefix frontend playwright install-deps chromium`. Real camera/microphone access requires HTTPS or localhost and explicit browser permission.
 
 ## Configure real providers
 

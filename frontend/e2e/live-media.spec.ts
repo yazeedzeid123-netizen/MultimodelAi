@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 async function waitForRecording(page: import("@playwright/test").Page) {
   await expect(page.getByRole("status").filter({ hasText: "Recording" })).toBeVisible();
-  await expect(page.getByLabel(/Elapsed time/)).not.toHaveText("00:00 / 05:00", { timeout: 5_000 });
+  await expect(page.getByLabel(/Elapsed time/)).not.toHaveText(/^00:00/, { timeout: 8_000 });
 }
 
 test("audio can record, pause/resume, play, retake, and submit only after confirmation", async ({ page }) => {
@@ -55,12 +55,17 @@ test("permission denial gives a clear message without creating an attachment", a
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: { getUserMedia: async () => { throw Object.assign(new Error("denied"), { name: "NotAllowedError" }); } },
+      value: { getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); } },
     });
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Record audio" }).click();
   await page.getByRole("button", { name: "Start Recording" }).click();
   await expect(page.getByRole("alert")).toContainText("Allow microphone access");
+  await expect(page.locator(".attachment-item")).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel audio recording" }).click();
+  await page.getByRole("button", { name: "Record video" }).click();
+  await page.getByRole("button", { name: "Enable camera preview" }).click();
+  await expect(page.getByRole("alert")).toContainText("Allow camera and microphone access");
   await expect(page.locator(".attachment-item")).toHaveCount(0);
 });

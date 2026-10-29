@@ -240,8 +240,12 @@ export default function LiveMediaRecorder({ kind, onConfirm, onCancel }: Props) 
         recorder.stop();
       }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      if (playbackUrl) URL.revokeObjectURL(playbackUrl);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!playbackUrl) return;
+    return () => URL.revokeObjectURL(playbackUrl);
   }, [playbackUrl]);
 
   useEffect(() => {
